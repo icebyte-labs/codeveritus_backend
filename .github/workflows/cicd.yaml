@@ -28,54 +28,32 @@ jobs:
         run: docker push ${{ secrets.DOCKER_USERNAME }}/codeveritus-backend:latest
 
   deploy:
-    name: Deploy to RHEL via Cloudflare Tunnel
-    runs-on: ubuntu-latest
+    name: Deploy to Alpine via Native Local SSH
+    runs-on: self-hosted # GitHub sends the trigger to your ultra-light LXC
     needs: build
-    permissions:
-      contents: read
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Install cloudflared (Fast Method)
+      - name: Native SSH Execution
+        # We use standard bash to pipe the deployment script directly into the Alpine VM over native SSH.
         run: |
-          curl -L --output cloudflared.deb https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64.deb
-          sudo dpkg -i cloudflared.deb      # BEST PRACTICE: Use a dedicated action to handle the SSH key securely.
+          ssh -o StrictHostKeyChecking=no ${{ secrets.SSH_USERNAME }}@${{ secrets.SSH_HOST }} << 'EOF'
+            cd ${{ secrets.DEPLOY_DIR }}
 
-      - name: Set Up SSH Agent
-        uses: webfactory/ssh-agent@v0.9.0
-        with:
-          ssh-private-key: ${{ secrets.SSH_PRIVATE_KEY }}
-          # ssh-passphrase: ${{ secrets.SSH_KEY_PASSPHRASE }} # <-- Uncomment this line ONLY if your key has a passphrase
+            echo "🛠️ Creating pristine .env file from secrets..."
+            echo "MONGO_URI=${{ secrets.MONGO_URI }}" > .env
+            echo "JWT_SECRET_TOKEN=${{ secrets.JWT_SECRET_TOKEN }}" >> .env
+            echo "MODEL_API=${{ secrets.MODEL_API }}" >> .env
+            echo "PORT=${{ secrets.PORT }}" >> .env
+            echo "SALTROUNDS=${{ secrets.SALTROUNDS }}" >> .env
+            echo "BASE_URL=${{ secrets.BASE_URL }}" >> .env
 
-      - name: Configure SSH for Tunnel
-        run: |
-          mkdir -p ~/.ssh
-          cat <<EOF > ~/.ssh/config
-          Host rhel-tunnel
-            HostName ${{ secrets.RHEL_HOSTNAME }}
-            User root
-            ProxyCommand cloudflared access ssh --hostname ${{ secrets.RHEL_HOSTNAME }}
-            StrictHostKeyChecking no 
-            UserKnownHostsFile /dev/null
-          EOF
-          # Note: ssh-keyscan is no longer needed because we set StrictHostKeyChecking to 'no' for simplicity in CI/CD.
-
-      - name: Deploy via SSH
-        run: |
-          ssh rhel-tunnel << 'EOF'
-            cd /opt/codeveritus
-
-            echo "🛠️ Pulling latest Docker image for the backend..."
+            echo "🛠️ Pulling latest Docker image..."
             docker compose pull backend 
 
-            echo "🚀 Recreating frontend container..."
-            # This single command handles stopping, removing, and starting the new container.
+            echo "🚀 Recreating backend container..."
             docker compose up -d --force-recreate --remove-orphans backend
 
-            echo "🧹 Pruning old, unused backend images..."
-            # This safely removes only the old backend image, not affecting other projects.
+            echo "🧹 Pruning old images..."
             docker images --filter "dangling=true" --filter "reference=${{ secrets.DOCKER_USERNAME }}/codeveritus-backend" -q | xargs -r docker rmi
 
-            echo "✅ Deployment complete!"
+            echo "✅ Native Deployment complete!"
           EOF

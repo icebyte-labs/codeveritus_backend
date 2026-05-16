@@ -42,6 +42,12 @@
 
 
 
+// Polyfill for SlowBuffer to support older modules (like buffer-equal-constant-time) in Node.js 22+
+const buffer = require('buffer');
+if (!buffer.SlowBuffer) {
+  buffer.SlowBuffer = buffer.Buffer;
+}
+
 require("dotenv").config();
 
 const express = require("express");
