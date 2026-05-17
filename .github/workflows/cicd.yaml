@@ -1,5 +1,4 @@
-
-name: Deploy Backend 
+name: Deploy Backend
 
 on:
   push:
@@ -44,7 +43,6 @@ jobs:
             echo "MODEL_API=${{ secrets.MODEL_API }}" >> .env
             echo "PORT=${{ secrets.PORT }}" >> .env
             echo "SALTROUNDS=${{ secrets.SALTROUNDS }}" >> .env
-            echo "BASE_URL=${{ secrets.BASE_URL }}" >> .env
 
             echo "🛠️ Pulling latest Docker image..."
             docker compose pull backend 
